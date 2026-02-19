@@ -50,6 +50,37 @@ const sequelize = new Sequelize(
     }
 );
 
+// Safely add new columns without using alter:true (avoids MySQL 64-key limit)
+async function runMigrations() {
+    const qi = sequelize.getQueryInterface();
+    const tableName = 'Bookings';
+
+    try {
+        const tableDesc = await qi.describeTable(tableName);
+
+        if (!tableDesc.paymentStatus) {
+            await qi.addColumn(tableName, 'paymentStatus', {
+                type: Sequelize.STRING,
+                defaultValue: 'pending'
+            });
+            console.log('  ➕ Added column: paymentStatus');
+        }
+
+        if (!tableDesc.stripePaymentIntentId) {
+            await qi.addColumn(tableName, 'stripePaymentIntentId', {
+                type: Sequelize.STRING,
+                allowNull: true
+            });
+            console.log('  ➕ Added column: stripePaymentIntentId');
+        }
+
+        console.log('✅ Migrations complete.');
+    } catch (err) {
+        // Table might not exist yet – sync will create it
+        console.log('ℹ️  Skipping migrations (table may not exist yet).');
+    }
+}
+
 const connectDB = async () => {
     try {
         await ensureDatabaseExists();
@@ -58,9 +89,12 @@ const connectDB = async () => {
         await sequelize.authenticate();
         console.log('✅ Success! Website is now connected to MySQL.');
 
-        // Sync models
+        // Sync models (safe, no alter)
         await sequelize.sync({ alter: false });
         console.log('✅ MySQL Tables are synchronized.');
+
+        // Run manual migrations for new columns
+        await runMigrations();
     } catch (error) {
         console.error('❌ MySQL Connection Error:', error.message);
         console.log('\n🛑 ACTION REQUIRED TO FIX THIS:');

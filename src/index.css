@@ -62,8 +62,7 @@
     --sidebar-ring: 45 100% 50%;
 
     --noise: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
-    --cursor-inner: 45 100% 50%;
-    --cursor-outer: 222 47% 12%;
+
   }
 
   .dark {
@@ -136,33 +135,7 @@
     overflow-x: hidden;
   }
 
-  /* Restore normal cursor for admin panel */
-  .admin-panel,
-  .admin-panel * {
-    cursor: auto !important;
-  }
 
-  /* Hide custom cursor when default is available or in admin */
-  .admin-panel .custom-cursor,
-  .admin-panel .custom-cursor-outer {
-    display: none !important;
-  }
-
-  /* Specific cursor styles for interactive elements in admin panel */
-  .admin-panel button,
-  .admin-panel a,
-  .admin-panel input[type="submit"],
-  .admin-panel select {
-    cursor: pointer !important;
-  }
-
-  .admin-panel input[type="text"],
-  .admin-panel input[type="email"],
-  .admin-panel input[type="password"],
-  .admin-panel input[type="number"],
-  .admin-panel textarea {
-    cursor: text !important;
-  }
 
   body::after {
     content: "";
@@ -325,38 +298,7 @@
     @apply w-full;
   }
 
-  /* Custom Cursor Styles */
-  .custom-cursor {
-    width: 8px;
-    height: 8px;
-    background: #E31B23;
-    border-radius: 50%;
-    position: fixed;
-    pointer-events: none;
-    z-index: 10001;
-    transition: transform 0.1s ease;
-  }
 
-  .custom-cursor-outer {
-    width: 30px;
-    height: 30px;
-    border: 2px solid hsl(var(--cursor-outer) / 0.5);
-    border-radius: 50%;
-    position: fixed;
-    pointer-events: none;
-    z-index: 10000;
-    transition: all 0.2s ease-out;
-  }
-
-  .cursor-hover {
-    transform: scale(1.5);
-    background: transparent !important;
-    border: 1px solid hsl(var(--cursor-inner));
-    width: 50px;
-    height: 50px;
-    margin-top: -10px;
-    margin-left: -10px;
-  }
 
   .glass-header {
     @apply fixed top-0 left-0 w-full z-50 transition-all duration-500;

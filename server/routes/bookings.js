@@ -9,10 +9,12 @@ router.post('/', auth, async (req, res) => {
         const {
             carId, driverId, startDate, endDate, pickupDate, returnDate,
             pickupTime, returnTime, firstName, lastName, email, phone,
-            totalPrice, status, pickupLocation, returnLocation,
-            insurance, gps, childSeat, additionalDriver, paymentMethod
+            totalPrice, pickupLocation, returnLocation,
+            insurance, gps, childSeat, additionalDriver, paymentMethod,
+            stripePaymentIntentId
         } = req.body;
 
+        // New bookings always start as 'pending' until payment is confirmed
         const newBooking = await Booking.create({
             userId: req.user.id,
             carId,
@@ -28,7 +30,9 @@ router.post('/', auth, async (req, res) => {
             email,
             phone,
             totalPrice,
-            status: status || 'pending',
+            status: 'pending',
+            paymentStatus: 'pending',
+            stripePaymentIntentId: stripePaymentIntentId || null,
             pickupLocation,
             returnLocation,
             insurance,
@@ -78,14 +82,18 @@ router.get('/', auth, async (req, res) => {
 // PUT update booking status (Admin only)
 router.put('/:id', auth, admin, async (req, res) => {
     try {
-        const { status } = req.body;
+        const { status, paymentStatus } = req.body;
         const booking = await Booking.findByPk(req.params.id);
 
         if (!booking) {
             return res.status(404).json({ message: 'Booking not found' });
         }
 
-        await booking.update({ status });
+        const updateData = {};
+        if (status) updateData.status = status;
+        if (paymentStatus) updateData.paymentStatus = paymentStatus;
+
+        await booking.update(updateData);
         res.json(booking);
     } catch (err) {
         console.error(err.message);
@@ -128,6 +136,7 @@ router.get('/:id/tracking', async (req, res) => {
         const trackingData = {
             id: booking.id,
             status: booking.status,
+            paymentStatus: booking.paymentStatus,
             startDate: booking.startDate,
             endDate: booking.endDate,
             vehicleName: booking.Car ? booking.Car.name : 'Premium Fleet',

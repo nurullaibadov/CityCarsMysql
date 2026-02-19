@@ -14,6 +14,9 @@ connectDB();
 
 const app = express();
 
+// Stripe webhook needs raw body - must be before JSON parser
+app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
+
 // Middleware
 app.use(express.json()); // Body parser
 app.use(express.urlencoded({ extended: true }));
@@ -32,7 +35,7 @@ app.use(morgan('dev')); // Logging
 // Rate Limiting
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 100
+    max: 200 // Increased limit for payment flows
 });
 app.use(limiter);
 
@@ -50,7 +53,7 @@ app.use('/api/news', require('./routes/news'));
 
 // Basic route
 app.get('/', (req, res) => {
-    res.send('CityCars.az API Running (MySQL Backend)');
+    res.send('CityCars.az API Running (MySQL Backend with Stripe Payments)');
 });
 
 // Error handling middleware
@@ -64,4 +67,5 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Frontend URL allowed: ${process.env.FRONTEND_URL || 'http://localhost:5173'}`);
+    console.log(`Stripe integration: ${process.env.STRIPE_SECRET_KEY ? '✅ Configured' : '❌ Missing STRIPE_SECRET_KEY'}`);
 });

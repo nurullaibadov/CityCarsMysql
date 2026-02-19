@@ -35,6 +35,14 @@ const Booking = sequelize.define('Booking', {
         type: DataTypes.STRING,
         defaultValue: 'pending' // pending, confirmed, completed, cancelled
     },
+    paymentStatus: {
+        type: DataTypes.STRING,
+        defaultValue: 'pending' // pending, paid, failed, refunded
+    },
+    stripePaymentIntentId: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
     pickupLocation: {
         type: DataTypes.STRING,
         allowNull: true

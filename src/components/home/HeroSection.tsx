@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
-import { MapPin, Calendar, Search, Star, Shield, Clock, Car } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { MapPin, Calendar, Search, Star, Shield, Clock, Car, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
@@ -10,6 +11,22 @@ import heroImage from '@/assets/hero-car.jpg';
 import MagneticButton from '@/components/ui/magnetic-button';
 import ScrollRevealText from '@/components/ui/scroll-reveal-text';
 import MouseTilt from '@/components/ui/mouse-tilt';
+import api from '@/services/api';
+
+const LOCATIONS = [
+  'Heydar Aliyev Center',
+  'Hilton Hotel',
+  'Baku Marriott Hotel',
+  'JW Marriott Absheron Baku',
+  'Four Seasons Hotel Baku',
+];
+
+interface Driver {
+  id: number;
+  name: string;
+  rating?: number;
+  experience?: string;
+}
 
 const HeroSection: React.FC = () => {
   const { t } = useLanguage();
@@ -20,12 +37,27 @@ const HeroSection: React.FC = () => {
   const [returnLocation, setReturnLocation] = useState('');
   const [pickupDate, setPickupDate] = useState('');
   const [returnDate, setReturnDate] = useState('');
+  const [selectedDriver, setSelectedDriver] = useState('');
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+
+  // Fetch available drivers
+  useEffect(() => {
+    const fetchDrivers = async () => {
+      try {
+        const res = await api.get('/drivers');
+        setDrivers(res.data);
+      } catch (err) {
+        console.error('Failed to fetch drivers:', err);
+      }
+    };
+    fetchDrivers();
+  }, []);
 
   const handleSearch = () => {
     if (!pickupLocation || !pickupDate || !returnDate) {
       toast({
         title: 'Missing Information',
-        description: 'Please fill in all required fields to search for cars.',
+        description: 'Please select pickup location, pickup date and return date.',
         variant: 'destructive'
       });
       return;
@@ -45,8 +77,17 @@ const HeroSection: React.FC = () => {
       description: 'Finding the perfect car for you!',
     });
 
+    // Navigate to cars page with search parameters
     setTimeout(() => {
-      navigate('/cars');
+      navigate('/cars', {
+        state: {
+          pickupLocation,
+          returnLocation: returnLocation || pickupLocation,
+          pickupDate,
+          returnDate,
+          driverId: selectedDriver || null,
+        }
+      });
     }, 500);
   };
 
@@ -185,33 +226,49 @@ const HeroSection: React.FC = () => {
                 </h2>
 
                 <div className="space-y-6">
+                  {/* Pickup & Return Location Selects */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-2">
                         <MapPin className="w-3 h-3 text-accent" />
                         Pickup Location
                       </label>
-                      <Input
-                        placeholder="Enter city or airport"
-                        className="h-14 glass-card border-border/50 focus:border-accent"
-                        value={pickupLocation}
-                        onChange={(e) => setPickupLocation(e.target.value)}
-                      />
+                      <Select value={pickupLocation} onValueChange={setPickupLocation}>
+                        <SelectTrigger className="h-14 glass-card border-border/50 focus:border-accent rounded-xl">
+                          <div className="flex items-center gap-2 text-sm">
+                            <MapPin className="w-4 h-4 text-accent flex-shrink-0" />
+                            <SelectValue placeholder="Select pickup location" />
+                          </div>
+                        </SelectTrigger>
+                        <SelectContent className="glass-card border-border/40">
+                          {LOCATIONS.map((loc) => (
+                            <SelectItem key={loc} value={loc}>{loc}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
                       <label className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-2">
                         <MapPin className="w-3 h-3 text-accent" />
                         Return Location
                       </label>
-                      <Input
-                        placeholder="Enter city or airport"
-                        className="h-14 glass-card border-border/50 focus:border-accent"
-                        value={returnLocation}
-                        onChange={(e) => setReturnLocation(e.target.value)}
-                      />
+                      <Select value={returnLocation} onValueChange={setReturnLocation}>
+                        <SelectTrigger className="h-14 glass-card border-border/50 focus:border-accent rounded-xl">
+                          <div className="flex items-center gap-2 text-sm">
+                            <MapPin className="w-4 h-4 text-accent flex-shrink-0" />
+                            <SelectValue placeholder="Select return location" />
+                          </div>
+                        </SelectTrigger>
+                        <SelectContent className="glass-card border-border/40">
+                          {LOCATIONS.map((loc) => (
+                            <SelectItem key={loc} value={loc}>{loc}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
 
+                  {/* Dates */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-2">
@@ -239,6 +296,30 @@ const HeroSection: React.FC = () => {
                         min={pickupDate || new Date().toISOString().split('T')[0]}
                       />
                     </div>
+                  </div>
+
+                  {/* Select Driver */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-2">
+                      <Users className="w-3 h-3 text-accent" />
+                      Select Driver (Optional)
+                    </label>
+                    <Select value={selectedDriver} onValueChange={setSelectedDriver}>
+                      <SelectTrigger className="h-14 glass-card border-border/50 focus:border-accent rounded-xl">
+                        <div className="flex items-center gap-2 text-sm">
+                          <Users className="w-4 h-4 text-accent flex-shrink-0" />
+                          <SelectValue placeholder="Self-drive or choose a driver" />
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent className="glass-card border-border/40">
+                        <SelectItem value="self">Self-Drive (No Driver)</SelectItem>
+                        {drivers.map((driver) => (
+                          <SelectItem key={driver.id} value={String(driver.id)}>
+                            {driver.name}{driver.rating ? ` ★ ${driver.rating}` : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <MagneticButton className="w-full">

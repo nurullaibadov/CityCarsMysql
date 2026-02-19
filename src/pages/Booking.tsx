@@ -18,6 +18,11 @@ import api from '@/services/api';
 import confetti from 'canvas-confetti';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+
+// Initialize Stripe
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_51QwSHzF0IKexPLCz2tvi8wwYbCnSypmFVffeULJuJ1QU5iuo4ixUqOaS6VyKR44MQwYUnMPywz1y9mylWYPp2QZK00GDk7xRYY');
 
 interface BookingData {
     // Car Details
@@ -51,6 +56,96 @@ interface BookingData {
     paymentMethod: 'card' | 'cash';
 }
 
+// Stripe Payment Form Component
+const StripePaymentForm: React.FC<{
+    onPaymentSuccess: (paymentIntentId: string) => void;
+    onPaymentError: (error: string) => void;
+    loading: boolean;
+    setLoading: (loading: boolean) => void;
+    totalAmount: number;
+}> = ({ onPaymentSuccess, onPaymentError, loading, setLoading, totalAmount }) => {
+    const stripe = useStripe();
+    const elements = useElements();
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+
+        if (!stripe || !elements) {
+            return;
+        }
+
+        setLoading(true);
+
+        try {
+            const { error, paymentIntent } = await stripe.confirmPayment({
+                elements,
+                confirmParams: {
+                    return_url: window.location.origin + '/tracking',
+                },
+                redirect: 'if_required',
+            });
+
+            if (error) {
+                onPaymentError(error.message || 'Payment failed');
+                setLoading(false);
+            } else if (paymentIntent && paymentIntent.status === 'succeeded') {
+                onPaymentSuccess(paymentIntent.id);
+            } else {
+                onPaymentError('Payment was not completed. Please try again.');
+                setLoading(false);
+            }
+        } catch (err: any) {
+            onPaymentError(err.message || 'Unexpected payment error');
+            setLoading(false);
+        }
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="p-6 bg-background/50 rounded-2xl border border-border/30">
+                <PaymentElement
+                    options={{
+                        layout: 'tabs',
+                        defaultValues: {
+                            billingDetails: {
+                                address: {
+                                    country: 'AZ',
+                                }
+                            }
+                        }
+                    }}
+                />
+            </div>
+
+            <div className="p-6 bg-green-500/5 border border-green-500/20 rounded-[2rem] flex items-center gap-6">
+                <ShieldCheck className="w-10 h-10 text-green-500 flex-shrink-0" />
+                <div>
+                    <p className="text-sm font-bold uppercase tracking-[0.2em] text-green-600 mb-1">Secure Payment by Stripe</p>
+                    <p className="text-sm text-muted-foreground">Your payment is securely processed through Stripe's PCI-compliant infrastructure.</p>
+                </div>
+            </div>
+
+            <Button
+                type="submit"
+                disabled={!stripe || loading}
+                className="w-full h-16 rounded-2xl accent-gradient text-accent-foreground font-bold uppercase tracking-widest text-xs premium-glow"
+            >
+                {loading ? (
+                    <div className="flex items-center">
+                        <div className="w-5 h-5 border-2 border-accent-foreground/30 border-t-accent-foreground rounded-full animate-spin mr-3" />
+                        Processing Payment...
+                    </div>
+                ) : (
+                    <>
+                        <Lock className="w-5 h-5 mr-3" />
+                        Pay ${totalAmount.toFixed(2)} Securely
+                    </>
+                )}
+            </Button>
+        </form>
+    );
+};
+
 const Booking: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -59,6 +154,8 @@ const Booking: React.FC = () => {
 
     const [currentStep, setCurrentStep] = useState(1);
     const [loading, setLoading] = useState(false);
+    const [clientSecret, setClientSecret] = useState<string | null>(null);
+    const [bookingId, setBookingId] = useState<number | null>(null);
     const [bookingData, setBookingData] = useState<BookingData>({
         carId: location.state?.carId,
         carName: location.state?.carName || 'BMW 5 Series',
@@ -97,7 +194,7 @@ const Booking: React.FC = () => {
         { number: 1, title: 'Journey', icon: Calendar },
         { number: 2, title: 'Profile', icon: User },
         { number: 3, title: 'Privileges', icon: Shield },
-        { number: 4, title: 'Settlement', icon: CreditCard },
+        { number: 4, title: 'Payment', icon: CreditCard },
     ];
 
     const insuranceOptions = [
@@ -189,10 +286,53 @@ const Booking: React.FC = () => {
         return true;
     };
 
-    const handleNext = () => {
+    const handleNext = async () => {
         if (validateStep(currentStep)) {
-            setCurrentStep(currentStep + 1);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            // When moving to step 4 (payment), create the booking and payment intent
+            if (currentStep === 3 && bookingData.paymentMethod === 'card') {
+                if (!isAuthenticated) {
+                    toast({
+                        title: 'Authentication Required',
+                        description: 'Please login to proceed with booking.',
+                        variant: 'destructive',
+                    });
+                    navigate('/login', { state: { from: '/booking', bookingData } });
+                    return;
+                }
+
+                setLoading(true);
+                try {
+                    // 1. Create booking first (status: pending)
+                    const bookingRes = await api.post('/bookings', {
+                        ...bookingData,
+                        totalPrice: totals.total,
+                    });
+                    setBookingId(bookingRes.data.id);
+
+                    // 2. Create Stripe Payment Intent
+                    const paymentRes = await api.post('/payments/create-payment-intent', {
+                        amount: totals.total,
+                        bookingId: bookingRes.data.id,
+                        currency: 'usd'
+                    });
+                    setClientSecret(paymentRes.data.clientSecret);
+
+                    setCurrentStep(4);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                } catch (error: any) {
+                    console.error(error);
+                    toast({
+                        title: 'Setup Failed',
+                        description: error.response?.data?.message || 'Could not initialize payment. Please try again.',
+                        variant: 'destructive',
+                    });
+                } finally {
+                    setLoading(false);
+                }
+            } else {
+                setCurrentStep(currentStep + 1);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
         }
     };
 
@@ -201,9 +341,52 @@ const Booking: React.FC = () => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    const handleSubmit = async () => {
-        if (!validateStep(currentStep)) return;
+    // Handle successful Stripe payment
+    const handlePaymentSuccess = async (paymentIntentId: string) => {
+        try {
+            // Confirm payment on backend
+            await api.post('/payments/confirm-payment', {
+                paymentIntentId,
+                bookingId
+            });
 
+            confetti({
+                particleCount: 150,
+                spread: 80,
+                origin: { y: 0.6 },
+                colors: ['#FFD700', '#FFA500', '#000000']
+            });
+
+            toast({
+                title: 'Payment Successful! 🏆',
+                description: `Your booking #${bookingId} is confirmed and payment has been processed.`,
+            });
+
+            setTimeout(() => {
+                navigate(`/tracking?id=${bookingId}`);
+            }, 3000);
+        } catch (error: any) {
+            console.error(error);
+            toast({
+                title: 'Confirmation Issue',
+                description: 'Payment was received but booking confirmation had an issue. Contact support.',
+                variant: 'destructive',
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handlePaymentError = (error: string) => {
+        toast({
+            title: 'Payment Failed',
+            description: error,
+            variant: 'destructive',
+        });
+    };
+
+    // Handle cash payment / pay on collection
+    const handleCashBooking = async () => {
         if (!isAuthenticated) {
             toast({
                 title: 'Authentication Required',
@@ -216,21 +399,10 @@ const Booking: React.FC = () => {
 
         setLoading(true);
         try {
-            // 1. Simulate Payment Process
-            if (bookingData.paymentMethod === 'card') {
-                toast({ title: 'Processing Transaction...', description: 'Establishing secure link with bank.' });
-                await api.post('/payments/process', {
-                    amount: totals.total,
-                    bookingId: 'TEMP-' + Date.now(),
-                    cardNumber: '4242 **** **** 4242'
-                });
-            }
-
-            // 2. Submit Booking to Backend
             const res = await api.post('/bookings', {
                 ...bookingData,
                 totalPrice: totals.total,
-                status: 'confirmed'
+                paymentMethod: 'cash'
             });
 
             confetti({
@@ -242,7 +414,7 @@ const Booking: React.FC = () => {
 
             toast({
                 title: 'Reservation Secured! 🏆',
-                description: `Your booking #${res.data.id} is officially scheduled. Check email for details.`,
+                description: `Your booking #${res.data.id} is scheduled. Payment will be collected on pickup.`,
             });
 
             setTimeout(() => {
@@ -251,7 +423,7 @@ const Booking: React.FC = () => {
         } catch (error: any) {
             console.error(error);
             toast({
-                title: 'Mission Aborted',
+                title: 'Booking Failed',
                 description: error.response?.data?.message || 'Transaction failed. Please retry.',
                 variant: 'destructive',
             });
@@ -265,6 +437,19 @@ const Booking: React.FC = () => {
     };
 
     const totals = calculateTotal();
+
+    const stripeAppearance = {
+        theme: 'stripe' as const,
+        variables: {
+            colorPrimary: '#E31B23',
+            colorBackground: '#ffffff',
+            colorText: '#1a1a2e',
+            colorDanger: '#df1b41',
+            fontFamily: 'Inter, system-ui, sans-serif',
+            spacingUnit: '4px',
+            borderRadius: '12px',
+        },
+    };
 
     return (
         <Layout>
@@ -573,22 +758,13 @@ const Booking: React.FC = () => {
                                                 })}
                                             </CardContent>
                                         </Card>
-                                    </motion.div>
-                                )}
 
-                                {/* Step 4: Settlement */}
-                                {currentStep === 4 && (
-                                    <motion.div
-                                        key="step4"
-                                        initial={{ opacity: 0, x: 20 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        exit={{ opacity: 0, x: -20 }}
-                                    >
+                                        {/* Payment Method Selection */}
                                         <Card className="glass-card border-accent/5 rounded-[2.5rem] shadow-huge">
                                             <CardHeader className="p-10 pb-0">
-                                                <CardTitle className="text-2xl font-display font-bold">Financial Settlement</CardTitle>
+                                                <CardTitle className="text-2xl font-display font-bold">Payment Method</CardTitle>
                                             </CardHeader>
-                                            <CardContent className="p-10 space-y-10">
+                                            <CardContent className="p-10">
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                                     <label
                                                         className={`flex flex-col items-center p-8 border-2 rounded-[2.5rem] cursor-pointer transition-all ${bookingData.paymentMethod === 'card'
@@ -605,7 +781,7 @@ const Booking: React.FC = () => {
                                                             className="sr-only"
                                                         />
                                                         <CardIcon className={`w-12 h-12 mb-4 transition-colors ${bookingData.paymentMethod === 'card' ? 'text-accent' : 'text-muted-foreground'}`} />
-                                                        <span className="font-display font-bold text-xl">Digital Transaction</span>
+                                                        <span className="font-display font-bold text-xl">Pay with Stripe</span>
                                                         <span className="text-xs text-muted-foreground mt-2 font-bold uppercase tracking-widest text-center">Credit or Debit Card</span>
                                                     </label>
 
@@ -628,41 +804,84 @@ const Booking: React.FC = () => {
                                                         <span className="text-xs text-muted-foreground mt-2 font-bold uppercase tracking-widest text-center">Pay on Collection</span>
                                                     </label>
                                                 </div>
+                                            </CardContent>
+                                        </Card>
+                                    </motion.div>
+                                )}
 
-                                                {bookingData.paymentMethod === 'card' && (
-                                                    <motion.div
-                                                        initial={{ opacity: 0, scale: 0.95 }}
-                                                        animate={{ opacity: 1, scale: 1 }}
-                                                        className="space-y-8 pt-8 border-t border-border/30"
+                                {/* Step 4: Stripe Payment or Cash Confirmation */}
+                                {currentStep === 4 && (
+                                    <motion.div
+                                        key="step4"
+                                        initial={{ opacity: 0, x: 20 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        exit={{ opacity: 0, x: -20 }}
+                                    >
+                                        <Card className="glass-card border-accent/5 rounded-[2.5rem] shadow-huge">
+                                            <CardHeader className="p-10 pb-0">
+                                                <CardTitle className="text-2xl font-display font-bold">
+                                                    {bookingData.paymentMethod === 'card' ? 'Secure Payment' : 'Confirm Booking'}
+                                                </CardTitle>
+                                            </CardHeader>
+                                            <CardContent className="p-10 space-y-10">
+                                                {bookingData.paymentMethod === 'card' && clientSecret ? (
+                                                    <Elements
+                                                        stripe={stripePromise}
+                                                        options={{
+                                                            clientSecret,
+                                                            appearance: stripeAppearance,
+                                                        }}
                                                     >
-                                                        <div className="space-y-3">
-                                                            <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Card Number</Label>
-                                                            <Input placeholder="•••• •••• •••• ••••" className="h-14 text-xl tracking-widest bg-background/50 rounded-xl" />
+                                                        <StripePaymentForm
+                                                            onPaymentSuccess={handlePaymentSuccess}
+                                                            onPaymentError={handlePaymentError}
+                                                            loading={loading}
+                                                            setLoading={setLoading}
+                                                            totalAmount={totals.total}
+                                                        />
+                                                    </Elements>
+                                                ) : bookingData.paymentMethod === 'cash' ? (
+                                                    <div className="space-y-8">
+                                                        <div className="p-8 bg-amber-500/5 border border-amber-500/20 rounded-[2rem] text-center space-y-4">
+                                                            <span className="text-6xl">💵</span>
+                                                            <h3 className="text-2xl font-display font-bold">Pay on Collection</h3>
+                                                            <p className="text-muted-foreground max-w-md mx-auto">
+                                                                Your booking will be set to <Badge className="bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400 border-none font-bold">Pending</Badge> until payment is collected at pickup.
+                                                            </p>
                                                         </div>
-                                                        <div className="grid grid-cols-2 gap-8">
-                                                            <div className="space-y-3">
-                                                                <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Expiry</Label>
-                                                                <Input placeholder="MM/YY" className="h-14 bg-background/50 rounded-xl" />
-                                                            </div>
-                                                            <div className="space-y-3">
-                                                                <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">CVV/CVC</Label>
-                                                                <Input placeholder="•••" className="h-14 bg-background/50 rounded-xl" />
-                                                            </div>
-                                                        </div>
-                                                        <div className="space-y-3">
-                                                            <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Bearer Name</Label>
-                                                            <Input placeholder="AS STATED ON CARD" className="h-14 uppercase tracking-widest bg-background/50 rounded-xl" />
-                                                        </div>
-                                                    </motion.div>
-                                                )}
 
-                                                <div className="p-8 bg-green-500/5 border border-green-500/20 rounded-[2rem] flex items-center gap-6">
-                                                    <ShieldCheck className="w-10 h-10 text-green-500 flex-shrink-0" />
-                                                    <div>
-                                                        <p className="text-sm font-bold uppercase tracking-[0.2em] text-green-600 mb-1">Encrypted Terminal</p>
-                                                        <p className="text-sm text-muted-foreground">Your financial signature is processed through an isolated, end-to-end encrypted protocol.</p>
+                                                        <div className="p-6 bg-green-500/5 border border-green-500/20 rounded-[2rem] flex items-center gap-6">
+                                                            <ShieldCheck className="w-10 h-10 text-green-500 flex-shrink-0" />
+                                                            <div>
+                                                                <p className="text-sm font-bold uppercase tracking-[0.2em] text-green-600 mb-1">Reservation Guarantee</p>
+                                                                <p className="text-sm text-muted-foreground">Your vehicle will be reserved and ready at the designated pickup location.</p>
+                                                            </div>
+                                                        </div>
+
+                                                        <Button
+                                                            onClick={handleCashBooking}
+                                                            disabled={loading}
+                                                            className="w-full h-16 rounded-2xl accent-gradient text-accent-foreground font-bold uppercase tracking-widest text-xs premium-glow"
+                                                        >
+                                                            {loading ? (
+                                                                <div className="flex items-center">
+                                                                    <div className="w-5 h-5 border-2 border-accent-foreground/30 border-t-accent-foreground rounded-full animate-spin mr-3" />
+                                                                    Processing...
+                                                                </div>
+                                                            ) : (
+                                                                <>
+                                                                    <Sparkles className="w-5 h-5 mr-3" />
+                                                                    Confirm Reservation
+                                                                </>
+                                                            )}
+                                                        </Button>
                                                     </div>
-                                                </div>
+                                                ) : (
+                                                    <div className="text-center py-12">
+                                                        <div className="w-12 h-12 border-4 border-accent/30 border-t-accent rounded-full animate-spin mx-auto mb-4" />
+                                                        <p className="text-muted-foreground">Initializing payment gateway...</p>
+                                                    </div>
+                                                )}
                                             </CardContent>
                                         </Card>
                                     </motion.div>
@@ -670,50 +889,55 @@ const Booking: React.FC = () => {
                             </AnimatePresence>
 
                             {/* Navigation Steering */}
-                            <div className="flex gap-6 pt-8">
-                                {currentStep > 1 && (
-                                    <Button
-                                        size="lg"
-                                        variant="ghost"
-                                        onClick={handlePrevious}
-                                        disabled={loading}
-                                        className="h-16 flex-1 rounded-2xl glass-card border-border/40 font-bold uppercase tracking-widest text-xs"
-                                    >
-                                        <ChevronLeft className="w-5 h-5 mr-3" />
-                                        Previous
-                                    </Button>
-                                )}
-                                {currentStep < steps.length ? (
+                            {currentStep < 4 && (
+                                <div className="flex gap-6 pt-8">
+                                    {currentStep > 1 && (
+                                        <Button
+                                            size="lg"
+                                            variant="ghost"
+                                            onClick={handlePrevious}
+                                            disabled={loading}
+                                            className="h-16 flex-1 rounded-2xl glass-card border-border/40 font-bold uppercase tracking-widest text-xs"
+                                        >
+                                            <ChevronLeft className="w-5 h-5 mr-3" />
+                                            Previous
+                                        </Button>
+                                    )}
                                     <Button
                                         size="lg"
                                         onClick={handleNext}
                                         disabled={loading}
                                         className="h-16 flex-1 rounded-2xl accent-gradient text-accent-foreground font-bold uppercase tracking-widest text-xs premium-glow"
                                     >
-                                        Proceed
-                                        <ChevronRight className="w-5 h-5 ml-3" />
-                                    </Button>
-                                ) : (
-                                    <Button
-                                        size="lg"
-                                        onClick={handleSubmit}
-                                        disabled={loading}
-                                        className="h-16 flex-1 rounded-2xl accent-gradient text-accent-foreground font-bold uppercase tracking-widest text-xs premium-glow"
-                                    >
                                         {loading ? (
                                             <div className="flex items-center">
                                                 <div className="w-5 h-5 border-2 border-accent-foreground/30 border-t-accent-foreground rounded-full animate-spin mr-3" />
-                                                Processing Protocol...
+                                                Setting up...
                                             </div>
                                         ) : (
                                             <>
-                                                <Sparkles className="w-5 h-5 mr-3" />
-                                                Secure Reservation
+                                                {currentStep === 3 && bookingData.paymentMethod === 'card' ? 'Proceed to Payment' : 'Proceed'}
+                                                <ChevronRight className="w-5 h-5 ml-3" />
                                             </>
                                         )}
                                     </Button>
-                                )}
-                            </div>
+                                </div>
+                            )}
+
+                            {currentStep === 4 && (
+                                <div className="flex gap-6 pt-4">
+                                    <Button
+                                        size="lg"
+                                        variant="ghost"
+                                        onClick={handlePrevious}
+                                        disabled={loading}
+                                        className="h-14 rounded-2xl glass-card border-border/40 font-bold uppercase tracking-widest text-xs px-8"
+                                    >
+                                        <ChevronLeft className="w-5 h-5 mr-3" />
+                                        Back
+                                    </Button>
+                                </div>
+                            )}
                         </div>
 
                         {/* Audit Summary Column */}
@@ -762,6 +986,21 @@ const Booking: React.FC = () => {
                                     <div className="flex justify-between items-center">
                                         <span className="text-xl font-display font-bold">Total Investment</span>
                                         <span className="text-3xl font-display font-bold text-gradient">${totals.total.toFixed(2)}</span>
+                                    </div>
+
+                                    {/* Payment Method Badge */}
+                                    <div className="flex items-center gap-3 p-4 bg-secondary/20 rounded-2xl">
+                                        {bookingData.paymentMethod === 'card' ? (
+                                            <>
+                                                <CreditCard className="w-5 h-5 text-accent" />
+                                                <span className="text-sm font-bold">Stripe Card Payment</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <span className="text-xl">💵</span>
+                                                <span className="text-sm font-bold">Pay on Collection</span>
+                                            </>
+                                        )}
                                     </div>
 
                                     <div className="space-y-3 pt-4">
