@@ -53,7 +53,7 @@ app.use('/api/news', require('./routes/news'));
 
 // Basic route
 app.get('/', (req, res) => {
-    res.send('CityCars.az API Running (MySQL Backend with Stripe Payments)');
+    res.send('CityCars.az API Running (PostgreSQL Backend with Stripe Payments)');
 });
 
 // Error handling middleware

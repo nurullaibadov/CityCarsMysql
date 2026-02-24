@@ -25,7 +25,7 @@ async function testConnection() {
         console.log('\n📋 Summary:');
         console.log('   - Backend URL: http://localhost:5000');
         console.log('   - Frontend URL: http://localhost:8081');
-        console.log('   - Database: MySQL (citycars_db)');
+        console.log('   - Database: PostgreSQL (Render)');
         console.log('   - CORS: Enabled for localhost:8081');
         console.log('\n🎉 Your website should now be working!');
         console.log('   Open http://localhost:8081 in your browser to see it.');

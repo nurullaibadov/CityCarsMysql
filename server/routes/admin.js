@@ -37,13 +37,13 @@ router.get('/revenue', auth, admin, async (req, res) => {
         // Since we are on SQL Server specifically:
         const monthlyRaw = await Booking.findAll({
             attributes: [
-                [sequelize.fn('DATE_FORMAT', sequelize.col('createdAt'), '%Y-%m'), 'month'],
+                [sequelize.fn('TO_CHAR', sequelize.col('createdAt'), 'YYYY-MM'), 'month'],
                 [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
                 [sequelize.fn('SUM', sequelize.col('totalPrice')), 'revenue']
             ],
-            group: [sequelize.fn('DATE_FORMAT', sequelize.col('createdAt'), '%Y-%m')],
+            group: [sequelize.fn('TO_CHAR', sequelize.col('createdAt'), 'YYYY-MM')],
             order: [[sequelize.col('month'), 'ASC']],
-            limit: 6 // Last 6 months? Logic usually needs filtering by date range first.
+            limit: 6
         });
 
         const monthly = monthlyRaw.map(item => ({
@@ -72,14 +72,14 @@ router.get('/analytics', auth, admin, async (req, res) => {
 
         const dailyRaw = await Booking.findAll({
             attributes: [
-                [sequelize.fn('DATE_FORMAT', sequelize.col('createdAt'), '%Y-%m-%d'), 'day'],
+                [sequelize.fn('TO_CHAR', sequelize.col('createdAt'), 'YYYY-MM-DD'), 'day'],
                 [sequelize.fn('COUNT', sequelize.col('id')), 'bookings'],
                 [sequelize.fn('SUM', sequelize.col('totalPrice')), 'revenue']
             ],
             where: {
                 createdAt: { [Op.gte]: sevenDaysAgo }
             },
-            group: [sequelize.fn('DATE_FORMAT', sequelize.col('createdAt'), '%Y-%m-%d')],
+            group: [sequelize.fn('TO_CHAR', sequelize.col('createdAt'), 'YYYY-MM-DD')],
             order: [[sequelize.col('day'), 'ASC']]
         });
 
@@ -169,13 +169,13 @@ router.get('/stats/user-growth', auth, admin, async (req, res) => {
 
         const growthRaw = await User.findAll({
             attributes: [
-                [sequelize.fn('DATE_FORMAT', sequelize.col('createdAt'), '%Y-%m'), 'month'],
+                [sequelize.fn('TO_CHAR', sequelize.col('createdAt'), 'YYYY-MM'), 'month'],
                 [sequelize.fn('COUNT', sequelize.col('id')), 'users']
             ],
             where: {
                 createdAt: { [Op.gte]: sixMonthsAgo }
             },
-            group: [sequelize.fn('DATE_FORMAT', sequelize.col('createdAt'), '%Y-%m')],
+            group: [sequelize.fn('TO_CHAR', sequelize.col('createdAt'), 'YYYY-MM')],
             order: [[sequelize.col('month'), 'ASC']],
             raw: true
         });
