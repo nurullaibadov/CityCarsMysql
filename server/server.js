@@ -21,12 +21,25 @@ app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json()); // Body parser
 app.use(express.urlencoded({ extended: true }));
 app.use(cors({
-    origin: [
-        'http://localhost:5173',
-        'http://localhost:8081',
-        'http://localhost:8080',
-        process.env.FRONTEND_URL
-    ].filter(Boolean),
+    origin: (origin, callback) => {
+        const allowedOrigins = [
+            'http://localhost:5173',
+            'http://localhost:8081',
+            'http://localhost:8080',
+            process.env.FRONTEND_URL
+        ].filter(Boolean);
+
+        // Allow requests with no origin (mobile apps, curl, Render health checks)
+        if (!origin) return callback(null, true);
+
+        // Allow any Vercel deployment URL
+        if (origin.endsWith('.vercel.app')) return callback(null, true);
+
+        // Allow explicitly listed origins
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+
+        callback(new Error(`CORS: Origin ${origin} not allowed`));
+    },
     credentials: true
 }));
 app.use(helmet());
