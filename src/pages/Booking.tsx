@@ -22,7 +22,7 @@ import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
 // Initialize Stripe
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_51QwSHzF0IKexPLCz2tvi8wwYbCnSypmFVffeULJuJ1QU5iuo4ixUqOaS6VyKR44MQwYUnMPywz1y9mylWYPp2QZK00GDk7xRYY');
+const stripePromise = loadStripe('pk_test_51QwSHzF0IKexPLCz2tvi8wwYbCnSypmFVffeULJuJ1QU5iuo4ixUqOaS6VyKR44MQwYUnMPywz1y9mylWYPp2QZK00GDk7xRYY');
 
 interface BookingData {
     // Car Details
