@@ -159,7 +159,7 @@ const Settings: React.FC = () => {
                         <div className="p-6 rounded-2xl bg-secondary/50 border border-border/50">
                             <Database className="w-8 h-8 text-accent mb-4" />
                             <h4 className="font-bold mb-1">Database API</h4>
-                            <p className="text-sm text-muted-foreground">Sequelize (MySQL)</p>
+                            <p className="text-sm text-muted-foreground">Sequelize (PostgreSQL)</p>
                         </div>
                         <div className="p-6 rounded-2xl bg-secondary/50 border border-border/50">
                             <Shield className="w-8 h-8 text-accent mb-4" />

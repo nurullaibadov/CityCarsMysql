@@ -8,6 +8,7 @@ import { LanguageProvider } from "@/contexts/LanguageContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { LazyMotion, domAnimation } from "framer-motion";
+import ProtectedRoute from "@/components/auth/ProtectedRoute";
 
 // Lazy load pages for better performance
 // ... (rest of the lazy imports)
@@ -93,18 +94,20 @@ const App = () => (
 
                     {/* Admin Routes */}
                     <Route path="/admin/login" element={<AdminLogin />} />
-                    <Route path="/admin" element={<AdminLayout />}>
-                      <Route index element={<Navigate to="/admin/dashboard" replace />} />
-                      <Route path="dashboard" element={<AdminDashboard />} />
-                      <Route path="cars" element={<AdminCars />} />
-                      <Route path="bookings" element={<AdminBookings />} />
-                      <Route path="users" element={<AdminUsers />} />
-                      <Route path="drivers" element={<AdminDrivers />} />
-                      <Route path="blacklist" element={<AdminBlacklist />} />
-                      <Route path="messages" element={<AdminMessages />} />
-                      <Route path="settings" element={<AdminSettings />} />
-                      <Route path="analytics" element={<AdminAnalytics />} />
-                      <Route path="news" element={<AdminNews />} />
+                    <Route element={<ProtectedRoute adminOnly />}>
+                      <Route path="/admin" element={<AdminLayout />}>
+                        <Route index element={<Navigate to="/admin/dashboard" replace />} />
+                        <Route path="dashboard" element={<AdminDashboard />} />
+                        <Route path="cars" element={<AdminCars />} />
+                        <Route path="bookings" element={<AdminBookings />} />
+                        <Route path="users" element={<AdminUsers />} />
+                        <Route path="drivers" element={<AdminDrivers />} />
+                        <Route path="blacklist" element={<AdminBlacklist />} />
+                        <Route path="messages" element={<AdminMessages />} />
+                        <Route path="settings" element={<AdminSettings />} />
+                        <Route path="analytics" element={<AdminAnalytics />} />
+                        <Route path="news" element={<AdminNews />} />
+                      </Route>
                     </Route>
 
                     <Route path="*" element={<NotFound />} />

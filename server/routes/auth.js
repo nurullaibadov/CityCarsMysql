@@ -143,7 +143,7 @@ router.post('/register', async (req, res) => {
         user = await User.create({
             email,
             password: hashedPassword,
-            role: role || 'user',
+            role: 'user', // Force role to 'user' for safety
             name,
             phone,
             address

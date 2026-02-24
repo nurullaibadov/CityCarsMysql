@@ -241,28 +241,65 @@ router.get('/stats', auth, admin, async (req, res) => {
 // GET Recent Activities
 router.get('/activities', auth, admin, async (req, res) => {
     try {
-        const limit = parseInt(req.query.limit) || 5;
+        const limit = parseInt(req.query.limit) || 8;
 
-        // Fetch recent bookings
-        const bookings = await Booking.findAll({
-            limit,
-            order: [['createdAt', 'DESC']],
-            include: [{ model: User, attributes: ['email'] }, { model: Car, attributes: ['name'] }]
+        const [bookings, users, messages] = await Promise.all([
+            Booking.findAll({
+                limit: 5,
+                order: [['createdAt', 'DESC']],
+                include: [{ model: User, attributes: ['email'] }, { model: Car, attributes: ['name'] }]
+            }),
+            User.findAll({
+                limit: 5,
+                order: [['createdAt', 'DESC']],
+                attributes: ['email', 'createdAt']
+            }),
+            Contact.findAll({
+                limit: 5,
+                order: [['createdAt', 'DESC']],
+                attributes: ['name', 'subject', 'createdAt']
+            })
+        ]);
+
+        const activities = [];
+
+        bookings.forEach(b => {
+            activities.push({
+                user: b.User ? b.User.email.split('@')[0] : (b.firstName || 'Guest'),
+                action: 'booked',
+                item: b.Car ? b.Car.name : 'a vehicle',
+                timeAgo: timeAgo(b.createdAt),
+                timestamp: new Date(b.createdAt).getTime(),
+                color: 'bg-blue-500'
+            });
         });
 
-        // Format as activity
-        const activities = bookings.map(b => ({
-            user: b.User ? b.User.email.split('@')[0] : 'Unknown', // basic username
-            action: 'booked',
-            item: b.Car ? b.Car.name : 'Car',
-            timeAgo: timeAgo(b.createdAt), // Helper function needed
-            color: 'bg-blue-500'
-        }));
+        users.forEach(u => {
+            activities.push({
+                user: u.email.split('@')[0],
+                action: 'joined',
+                item: 'the platform',
+                timeAgo: timeAgo(u.createdAt),
+                timestamp: new Date(u.createdAt).getTime(),
+                color: 'bg-indigo-500'
+            });
+        });
 
-        // We can improved this by fetching recent users/messages too and merging/sorting.
-        // For now just bookings is better than nothing, or mixed.
+        messages.forEach(m => {
+            activities.push({
+                user: m.name,
+                action: 'sent inquiry',
+                item: `"${m.subject}"`,
+                timeAgo: timeAgo(m.createdAt),
+                timestamp: new Date(m.createdAt).getTime(),
+                color: 'bg-emerald-500'
+            });
+        });
 
-        res.json(activities);
+        // Sort by timestamp and limit
+        activities.sort((a, b) => b.timestamp - a.timestamp);
+
+        res.json(activities.slice(0, limit));
     } catch (err) {
         console.error(err.message);
         res.status(500).send('Server Error');
